@@ -29,10 +29,12 @@ public class MlPoll<T> where T : BbhGMl.Calculable {
   public func start(target: T)
   @objc deinit
 }
-public class Agent<T> where T : BbhGMl.Calculable {
-  public var fitnessVal: CoreGraphics.CGFloat!
-  public init(mutationRate: CoreGraphics.CGFloat = 0.1, random: @escaping () -> (T), fitness: @escaping (T?) -> (CoreGraphics.CGFloat, Swift.Int), getDNA: @escaping (T?, Swift.Int) -> (T), mutate: @escaping (T?, CoreGraphics.CGFloat) -> (T))
-  public init(agent: BbhGMl.Agent<T>)
+@_hasMissingDesignatedInitializers public class Agent<T> where T : BbhGMl.Calculable {
+  public var fitnessVal: CoreGraphics.CGFloat? {
+    get
+    set
+  }
+  public func hash(into hasher: inout Swift.Hasher)
   public static func == (lhs: BbhGMl.Agent<T>, rhs: BbhGMl.Agent<T>) -> Swift.Bool
   public func getData() -> T?
   @objc deinit

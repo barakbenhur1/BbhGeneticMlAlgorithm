@@ -343,36 +343,32 @@ public class Agent<T: Calculable>  {
     private var fitness: ((T?) -> (val: CGFloat, count: Int))?
     private var getDNA: ((T?, _ index: Int) -> (T))?
     private var mutate: ((T?, _ rate: CGFloat) -> (T))?
-    private var data: T?
-    private var calc: (val: CGFloat, count: Int)!
+    private lazy var data: T? = random?()
+
+    private lazy var calc = fitness?(data)
+    public lazy var fitnessVal = calc?.val
+    lazy var count = calc?.count
+    
     private var mutationRate: CGFloat!
     
-    var count: Int!
+    public func hash(into hasher: inout Hasher) {
+      data.hash(into: &hasher)
+    }
     
-    public var fitnessVal: CGFloat!
-    
-    public init(mutationRate: CGFloat = 0.1, random: @escaping () -> (T), fitness: @escaping (T?) -> (CGFloat, Int), getDNA: @escaping (T?, _ index: Int) -> (T), mutate: @escaping (T?, CGFloat) -> (T)) {
+    init(mutationRate: CGFloat = 0.1, random: @escaping () -> (T), fitness: @escaping (T?) -> (CGFloat, Int), getDNA: @escaping (T?, _ index: Int) -> (T), mutate: @escaping (T?, CGFloat) -> (T)) {
         self.mutationRate = mutationRate
         self.random = random
         self.fitness = fitness
         self.mutate = mutate
         self.getDNA = getDNA
-        self.data = random()
-        self.calc = fitness(data)
-        self.count = calc.count
-        self.fitnessVal = calc.val
     }
     
-    public init(agent: Agent) {
+    init(agent: Agent) {
         self.mutationRate = agent.mutationRate
         self.random = agent.random
         self.fitness = agent.fitness
         self.mutate = agent.mutate
         self.getDNA = agent.getDNA
-        self.data = agent.data
-        self.calc = fitness!(data)
-        self.count = calc.count
-        self.fitnessVal = calc.val
     }
     
     func toString() -> String {
