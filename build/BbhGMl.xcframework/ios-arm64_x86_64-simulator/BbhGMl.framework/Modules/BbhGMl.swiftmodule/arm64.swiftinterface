@@ -1,0 +1,50 @@
+// swift-interface-format-version: 1.0
+// swift-compiler-version: Apple Swift version 5.3.2 (swiftlang-1200.0.45 clang-1200.0.32.28)
+// swift-module-flags: -target arm64-apple-ios14.3-simulator -enable-objc-interop -enable-library-evolution -swift-version 5 -enforce-exclusivity=checked -O -module-name BbhGMl
+@_exported import BbhGMl
+import Swift
+import UIKit
+public protocol Calculable : Swift.Hashable, Swift.Sequence {
+  static func empty() -> Self
+  init()
+  func length() -> Swift.Int
+  func elementsEqual(_ other: Self) -> Swift.Bool
+  static func == (lhs: Self, rhs: Self) -> Swift.Bool
+  static func random(length: Swift.Int) -> Self
+  static func += (lhs: inout Self, rhs: Self)
+  subscript(offset: Swift.Int) -> Self { get set }
+}
+public protocol PollUpdates {
+  func update(guess: Swift.String, string: Swift.String, lettersIndexs: [Swift.Int], done: Swift.Bool)
+}
+public class MlPoll<T> where T : BbhGMl.Calculable {
+  public var finish: ((T, T, [Swift.Int], Swift.Bool) -> ())?
+  public var delegate: BbhGMl.PollUpdates?
+  public init(num: Swift.Int)
+  public func getAgents() -> [BbhGMl.Agent<T>]
+  public func getGeneration() -> Swift.Int
+  public func getBest() -> BbhGMl.Agent<T>?
+  public func sortAgents()
+  public func getUpdatedData() -> (guess: T, val: T, lettersIndexs: [Swift.Int], done: Swift.Bool)
+  public func start(target: T)
+  @objc deinit
+}
+public class Agent<T> where T : BbhGMl.Calculable {
+  public var fitnessVal: CoreGraphics.CGFloat!
+  public init(mutationRate: CoreGraphics.CGFloat = 0.1, random: @escaping () -> (T), fitness: @escaping (T?) -> (CoreGraphics.CGFloat, Swift.Int), getDNA: @escaping (T?, Swift.Int) -> (T), mutate: @escaping (T?, CoreGraphics.CGFloat) -> (T))
+  public init(agent: BbhGMl.Agent<T>)
+  public static func == (lhs: BbhGMl.Agent<T>, rhs: BbhGMl.Agent<T>) -> Swift.Bool
+  public func getData() -> T?
+  @objc deinit
+}
+extension String : BbhGMl.Calculable {
+  public static func random(length: Swift.Int) -> Swift.String
+  public static func += (lhs: inout Swift.String, rhs: Swift.String)
+  public static func == (lhs: Swift.String, rhs: Swift.String) -> Swift.Bool
+  public subscript(offset: Swift.Int) -> Swift.String {
+    get
+    set
+  }
+  public static func empty() -> Swift.String
+  public func length() -> Swift.Int
+}

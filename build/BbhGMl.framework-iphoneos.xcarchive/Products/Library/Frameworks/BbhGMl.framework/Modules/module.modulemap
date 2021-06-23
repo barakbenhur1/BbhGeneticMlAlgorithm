@@ -1,0 +1,11 @@
+framework module BbhGMl {
+  umbrella header "BbhGMl.h"
+
+  export *
+  module * { export * }
+}
+
+module BbhGMl.Swift {
+    header "BbhGMl-Swift.h"
+    requires objc
+}
