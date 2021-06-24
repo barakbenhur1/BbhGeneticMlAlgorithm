@@ -4,10 +4,13 @@
 @_exported import BbhGMl
 import Swift
 import UIKit
-public protocol Calculable : Swift.Hashable, Swift.Sequence {
+public protocol DNA : Swift.Hashable, Swift.Sequence {
   static func empty() -> Self
   init()
   func length() -> Swift.Int
+  func calcFitness(val: Self?, best: CoreGraphics.CGFloat) -> (val: CoreGraphics.CGFloat, count: CoreGraphics.CGFloat)
+  func mutate(rate: CoreGraphics.CGFloat) -> Self
+  func find(target: Self, count: CoreGraphics.CGFloat) -> Swift.Bool
   func elementsEqual(_ other: Self) -> Swift.Bool
   static func == (lhs: Self, rhs: Self) -> Swift.Bool
   static func random(length: Swift.Int) -> Self
@@ -17,10 +20,10 @@ public protocol Calculable : Swift.Hashable, Swift.Sequence {
 public protocol PollUpdates {
   func update(guess: Swift.String, string: Swift.String, lettersIndexs: [Swift.Int], done: Swift.Bool)
 }
-public class MlPoll<T> where T : BbhGMl.Calculable {
+public class MlPoll<T> where T : BbhGMl.DNA {
   public var finish: ((T, T, [Swift.Int], Swift.Bool) -> ())?
   public var delegate: BbhGMl.PollUpdates?
-  public init(num: Swift.Int)
+  public init(num: Swift.Int, lifeSpan: CoreGraphics.CGFloat = 0)
   public func getAgents() -> [BbhGMl.Agent<T>]
   public func getGeneration() -> Swift.Int
   public func getBest() -> BbhGMl.Agent<T>?
@@ -29,7 +32,7 @@ public class MlPoll<T> where T : BbhGMl.Calculable {
   public func start(target: T)
   @objc deinit
 }
-@_hasMissingDesignatedInitializers public class Agent<T> where T : BbhGMl.Calculable {
+@_hasMissingDesignatedInitializers public class Agent<T> where T : BbhGMl.DNA {
   public var fitnessVal: CoreGraphics.CGFloat? {
     get
     set
@@ -39,7 +42,7 @@ public class MlPoll<T> where T : BbhGMl.Calculable {
   public func getData() -> T?
   @objc deinit
 }
-extension String : BbhGMl.Calculable {
+extension String : BbhGMl.DNA {
   public static func random(length: Swift.Int) -> Swift.String
   public static func += (lhs: inout Swift.String, rhs: Swift.String)
   public static func == (lhs: Swift.String, rhs: Swift.String) -> Swift.Bool
@@ -49,4 +52,7 @@ extension String : BbhGMl.Calculable {
   }
   public static func empty() -> Swift.String
   public func length() -> Swift.Int
+  public func calcFitness(val: Swift.String?, best: CoreGraphics.CGFloat) -> (val: CoreGraphics.CGFloat, count: CoreGraphics.CGFloat)
+  public func mutate(rate: CoreGraphics.CGFloat) -> Swift.String
+  public func find(target: Swift.String, count: CoreGraphics.CGFloat) -> Swift.Bool
 }

@@ -7,10 +7,13 @@
 
 import UIKit
 
-public protocol Calculable: Equatable & Sequence & Hashable {
+public protocol DNA: Equatable & Sequence & Hashable {
     static func empty() -> Self
     init()
     func length() -> Int
+    func calcFitness(val: Self?, best: CGFloat) -> (val: CGFloat, count: CGFloat)
+    func mutate(rate: CGFloat) -> Self
+    func find(target: Self, count: CGFloat) -> Bool
     func elementsEqual(_ other: Self) -> Bool
     static func ==(lhs: Self, rhs: Self) -> Bool
     static func random(length: Int) -> Self
@@ -26,7 +29,7 @@ public protocol PollUpdates {
 //fileprivate var randomFix: [T: Int]!
 fileprivate let ratio: CGFloat =  0.1
 
-public class MlPoll<T: Calculable> {
+public class MlPoll<T: DNA> {
     
     private let num: Int!
     private var length: Int!
@@ -45,12 +48,15 @@ public class MlPoll<T: Calculable> {
     private var betterScoreMaxLoop = 6
     private var floatingPoint: CGFloat = 0
     
+    private var lifeSpan: CGFloat = 0
+    
     private var agents: [Agent<T>]!
     
     public var delegate: PollUpdates?
     
-    public init (num: Int) {
+    public init(num: Int, lifeSpan: CGFloat = 0) {
         self.num = num
+        self.lifeSpan = lifeSpan
         self.gen = 0
     }
     
@@ -114,43 +120,66 @@ public class MlPoll<T: Calculable> {
     private var safe = 0
     
     private func runGen() {
-        var best: Agent<T>!
-//        randomFix = [String: Int]()
-        var score: CGFloat = 0
         
-        //        print("Rate Of Change: \(rateOfChange)")
-        safe -= 1
-        for agent in agents {
-            //            print(agent.toString())
-            let agentToAdd = agent
-            
-            if let guess = agentToAdd.getData(), guess == target && agentToAdd.count == length {
-                var letters = [Int]()
-                for i in 0..<guess.length() {
-                    letters.append(i)
-                }
-
-                finish?(guess, "Generation: \(gen!)\n\nGuss: {%@}\n\nSolved: \(100)%\n\nLetters so far: \(guess)\n\n" as! T, letters, true)
-                return
+//        randomFix = [String: Int]()
+        
+        guard !didFinish() else {
+            let guess = best!.getData()!
+           
+            var chromosomeIndexs = [Int]()
+            for i in 0..<guess.length() {
+                chromosomeIndexs.append(i)
             }
             
-            if agentToAdd.fitnessVal! >= score {
-                rateOfChange *= best != nil && best.getData() == agentToAdd.getData() ? rateOfChangeEvolution : 1
-                best = agentToAdd
+            finish?(guess, "Generation: \(gen!)\n\nGuss: {%@}\n\nSolved: \(100)%\n\nLetters so far: \(guess)\n\n" as! T, chromosomeIndexs, true)
+            
+            return
+        }
+        
+        evolution()
+        
+        DispatchQueue.init(label: "Work").asyncAfter(deadline: .now() + Double(lifeSpan), execute: {
+            //        if safe < num / 2 {
+            self.runGen()
+            //        }
+        })
+    }
+    
+    private func didFinish() -> Bool {
+        var score: CGFloat = 0
+        var best: Agent<T>!
+        
+        //        print("Rate Of Change: \(rateOfChange)")
+        for i in 0..<agents.count {
+            //            print(agent.toString())
+            
+            guard !agents[i].find(target: target) else {
+//                print("finish: \(agents[i].toString())")
+                self.best = agents[i]
+                return true
+            }
+            
+            if agents[i].fitnessVal! >= score {
+                rateOfChange *= best != nil && best.getData() == agents[i].getData() ? rateOfChangeEvolution : 1
+                best = agents[i]
                 self.best = best
-                score = agentToAdd.fitnessVal!
-                
-                var letters = ""
-                var indexs = [Int]()
-                for i in 0..<length {
-                    letters += best.getData()![i] == target[i] ? "\(best.getData()![i])" : empty
-                    if best.getData()![i] == target[i] {
-                        indexs.append(i)
-                    }
-                }
+                score = agents[i].fitnessVal!
             }
         }
         
+        return false
+        
+    }
+    
+    private func evolution() {
+        safe -= 1
+        
+        newGeneration()
+        
+        safe += 1
+    }
+    
+    private func newGeneration() {
         var tempAgents = [Agent<T>]()
         let sort = agents!
         let sorted = sort.sorted { (obj, obj2) -> Bool in
@@ -164,7 +193,7 @@ public class MlPoll<T: Calculable> {
             let r = Int.random(in: 0..<agents.count)
             i -= 1
 //            print("increase limit: \(increaseLimit) , val: \(agents[r].fitnessVal! * 2)")
-            if agents[r].fitnessVal! < best.fitnessVal! * 0.4 {
+            if agents[r].fitnessVal! < best!.fitnessVal! * 0.4 {
                 let _ = agents.remove(at: r)
 //                print("removed: \(removed.toString())")
             }
@@ -220,7 +249,7 @@ public class MlPoll<T: Calculable> {
             if rateOfChange < 0.0005 {
 //                print("rate of change was: \(rateOfChange)")
                 rateOfChange = 0.5
-                agent.mutation()
+                agent = agent.mutation()
             }
             
             tempAgents.append(agent)
@@ -229,15 +258,6 @@ public class MlPoll<T: Calculable> {
         agents = tempAgents
         
         gen += 1
-        
-        safe += 1
-        
-        DispatchQueue.init(label: "Work").async {
-            
-            //        if safe < num / 2 {
-            self.runGen()
-            //        }
-        }
     }
     
     private func tryToFix(a: Agent<T>, b: Agent<T>) -> (a: Agent<T>, b: Agent<T>) {
@@ -272,11 +292,11 @@ public class MlPoll<T: Calculable> {
         Agent(random: { [self] in
             return data ?? T.random(length: length)
         }, fitness: { [self] val in
-            return calcFitness(val: val, best: best?.fitnessVal ?? 0.01)
+            return target.calcFitness(val: val, best: best?.fitnessVal ?? 0.01)
         }, getDNA: { [self] val, index in
             return getValueAt(val: val, index: index)
         }, mutate: { [self] val, rate  in
-            return mutate(val: val, rate: rate)
+            return val!.mutate(rate: rate)
         })
     }
     
@@ -297,50 +317,15 @@ public class MlPoll<T: Calculable> {
     }
     
     
-    private func calcFitness(val: T?, best: CGFloat) -> (val: CGFloat, count: Int) {
-        guard let  val = val else { return (0, 0) }
-        var count: CGFloat = 0.1
-        
-        for i in 0..<length {
-            if target[i] == val[i] {
-                count += 1
-            }
-        }
-        let x = count / CGFloat(length)
-        return (best * (x / best) / CGFloat(length), Int(count))
-    }
-    
     private func getValueAt(val: T?, index: Int) -> T {
         guard let val = val else { return T.empty() }
         return val[index]
     }
-    
-    private func mutate(val: T?, rate: CGFloat) -> T {
-        
-        guard let val = val else { return T.empty() }
-        
-        var tempVal = T.empty()
-        
-        for i in 0..<val.length() {
-            let c = val[i]
-            
-            let r = CGFloat.random(in: 0...1)
-            
-            if r < rate {
-                tempVal += T.random(length: 1)
-            }
-            else {
-                tempVal += c
-            }
-        }
-        
-        return tempVal
-    }
 }
 
-public class Agent<T: Calculable>  {
+public class Agent<T: DNA>  {
     private var random: (() -> (T))?
-    private var fitness: ((T?) -> (val: CGFloat, count: Int))?
+    private var fitness: ((T?) -> (val: CGFloat, count: CGFloat))?
     private var getDNA: ((T?, _ index: Int) -> (T))?
     private var mutate: ((T?, _ rate: CGFloat) -> (T))?
     private lazy var data: T? = random?()
@@ -355,7 +340,7 @@ public class Agent<T: Calculable>  {
       data.hash(into: &hasher)
     }
     
-    init(mutationRate: CGFloat = 0.1, random: @escaping () -> (T), fitness: @escaping (T?) -> (CGFloat, Int), getDNA: @escaping (T?, _ index: Int) -> (T), mutate: @escaping (T?, CGFloat) -> (T)) {
+    init(mutationRate: CGFloat = 0.1, random: @escaping () -> (T), fitness: @escaping (T?) -> (CGFloat, CGFloat), getDNA: @escaping (T?, _ index: Int) -> (T), mutate: @escaping (T?, CGFloat) -> (T)) {
         self.mutationRate = mutationRate
         self.random = random
         self.fitness = fitness
@@ -385,17 +370,16 @@ public class Agent<T: Calculable>  {
     
     @discardableResult
     func mutation() -> Agent<T> {
-        let r = CGFloat.random(in: 0...1)
-        
-        if r <= mutationRate {
-            data = mutate?(data, mutationRate)
-        }
-        
+        data = mutate?(data, mutationRate)
         return self
     }
     
     public func getData() -> T? {
         return data
+    }
+    
+    func find(target: T) -> Bool {
+        return data?.find(target: target, count: count ?? 0) ?? false
     }
 }
 
@@ -414,7 +398,7 @@ extension StringProtocol {
     subscript(range: PartialRangeUpTo<Int>) -> SubSequence { self[..<index(startIndex, offsetBy: range.upperBound)] }
 }
 
-extension String: Calculable {
+extension String: DNA {
     
     public static func random(length: Int) -> String {
         return randomString(length: length, targetLength: 0, numOfWorkers: 0)
@@ -485,5 +469,44 @@ extension String: Calculable {
     
     func elementsEqual(other: String) -> Bool {
         return elementsEqual(other)
+    }
+    
+    public func calcFitness(val: String?, best: CGFloat) -> (val: CGFloat, count: CGFloat) {
+        guard let  val = val else { return (0, 0) }
+        var count: CGFloat = 0.1
+        
+        for i in 0..<val.count {
+            if self[i] == val[i] {
+                count += 1
+            }
+        }
+        let x = count / CGFloat(val.count)
+        return (best * (x / best) / CGFloat(val.count), CGFloat(Int(count)))
+    }
+    
+    public func mutate(rate: CGFloat) -> Self {
+        
+//        guard let val = val else { return "" }
+        
+        var tempVal = ""
+        
+        for i in 0..<length() {
+            let c = self[i]
+            
+            let r = CGFloat.random(in: 0...1)
+            
+            if r < rate {
+                tempVal += String.random(length: 1)
+            }
+            else {
+                tempVal += c
+            }
+        }
+        
+        return tempVal
+    }
+    
+    public func find(target: String, count: CGFloat) -> Bool {
+        return self == target  && Int(count) == length()
     }
 }
