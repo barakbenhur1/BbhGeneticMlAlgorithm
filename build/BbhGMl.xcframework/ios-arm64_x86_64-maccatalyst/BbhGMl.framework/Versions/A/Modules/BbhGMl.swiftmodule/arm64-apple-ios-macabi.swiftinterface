@@ -4,47 +4,68 @@
 @_exported import BbhGMl
 import Swift
 import UIKit
-public protocol DNA : Swift.Hashable, Swift.Sequence {
+public protocol Chromosome {
+  func printDescription()
+  var extra: Any? { get set }
+}
+public protocol DNA : Swift.Decodable, Swift.Encodable, Swift.Hashable {
   static func empty() -> Self
-  init()
+  init(copy: Self)
   func length() -> Swift.Int
   func calcFitness(val: Self?, best: CoreGraphics.CGFloat) -> (val: CoreGraphics.CGFloat, count: CoreGraphics.CGFloat)
   func mutate(rate: CoreGraphics.CGFloat) -> Self
   func find(target: Self, count: CoreGraphics.CGFloat) -> Swift.Bool
   func elementsEqual(_ other: Self) -> Swift.Bool
   static func == (lhs: Self, rhs: Self) -> Swift.Bool
-  static func random(length: Swift.Int) -> Self
+  static func random(length: Swift.Int, extra: Any?) -> Self
   static func += (lhs: inout Self, rhs: Self)
   subscript(offset: Swift.Int) -> Self { get set }
+  func cleanBetweenGens()
 }
 public protocol PollUpdates {
   func update(guess: Swift.String, string: Swift.String, lettersIndexs: [Swift.Int], done: Swift.Bool)
 }
 public class MlPoll<T> where T : BbhGMl.DNA {
-  public var finish: ((T, T, [Swift.Int], Swift.Bool) -> ())?
+  public var finish: ((BbhGMl.Agent<T>, T, [Swift.Int], Swift.Bool) -> ())?
+  public var generationChange: ((Swift.Bool) -> ())?
   public var delegate: BbhGMl.PollUpdates?
-  public init(num: Swift.Int, lifeSpan: CoreGraphics.CGFloat = 0)
+  public init(num: Swift.Int, lifeSpan: CoreGraphics.CGFloat = 0, mutatingRate: CoreGraphics.CGFloat = 0)
+  public func saveGeneration(key: Swift.String) -> Swift.Bool
+  public func loadGeneration(key: Swift.String) -> Swift.Bool
+  public func stop()
+  public func contine()
   public func getAgents() -> [BbhGMl.Agent<T>]
   public func getGeneration() -> Swift.Int
   public func getBest() -> BbhGMl.Agent<T>?
   public func sortAgents()
   public func getUpdatedData() -> (guess: T, val: T, lettersIndexs: [Swift.Int], done: Swift.Bool)
-  public func start(target: T)
+  public func start(target: T, length: Swift.Int, extra: Any...)
   @objc deinit
 }
-@_hasMissingDesignatedInitializers public class Agent<T> where T : BbhGMl.DNA {
+@_hasMissingDesignatedInitializers public class Agent<T> : Swift.Decodable & Swift.Encodable where T : BbhGMl.DNA {
   public var fitnessVal: CoreGraphics.CGFloat? {
     get
     set
   }
+  required public init(from decoder: Swift.Decoder) throws
   public func hash(into hasher: inout Swift.Hasher)
+  public func encode(to encoder: Swift.Encoder) throws
   public static func == (lhs: BbhGMl.Agent<T>, rhs: BbhGMl.Agent<T>) -> Swift.Bool
   public func getData() -> T?
   @objc deinit
 }
-extension String : BbhGMl.DNA {
-  public static func random(length: Swift.Int) -> Swift.String
+extension String : BbhGMl.DNA, BbhGMl.Chromosome {
+  public func cleanBetweenGens()
+  public var extra: Any? {
+    get
+    set
+  }
+  public func printDescription()
+  public init(copy string: Swift.String)
+  public static func emptyChromosome() -> BbhGMl.Chromosome
+  public static func random(length: Swift.Int, extra: Any?) -> Swift.String
   public static func += (lhs: inout Swift.String, rhs: Swift.String)
+  public static func += (lhs: inout Swift.String, rhs: BbhGMl.Chromosome)
   public static func == (lhs: Swift.String, rhs: Swift.String) -> Swift.Bool
   public subscript(offset: Swift.Int) -> Swift.String {
     get
