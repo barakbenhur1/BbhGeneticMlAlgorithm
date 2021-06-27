@@ -17,7 +17,7 @@ public protocol DNA: Equatable & Hashable & Encodable & Decodable {
     //    static func emptyChromosome() -> Chromosome
     init(copy: Self)
     func length() -> Int
-    func calcFitness(val: Self?, best: CGFloat) -> (val: CGFloat, count: CGFloat)
+    func calcFitness(val: Self?, best: CGFloat) -> (val: CGFloat, extraDimension: CGFloat)
     func mutate(rate: CGFloat) -> Self
     func find(target: Self, count: CGFloat) -> Bool
     func elementsEqual(_ other: Self) -> Bool
@@ -27,7 +27,11 @@ public protocol DNA: Equatable & Hashable & Encodable & Decodable {
     //    static func +=(lhs: inout Self, rhs: Chromosome)
     subscript(offset: Int) -> Self { get set }
     
+    var isCompletedTask: ((_ val: Self) -> (Bool))? { get set }
+    
     func cleanBetweenGens()
+    
+    var extra: Any? { get set }
 }
 
 public protocol PollUpdates {
@@ -47,7 +51,15 @@ public class MlPoll<T: DNA> {
     
     public var finish: ((_ guess: Agent<T>, _ val: T, _ lettersIndexs: [Int], _ done: Bool) -> ())?
     
-    public var generationChange: ((_ isShow: Bool) -> ())?
+    public var generationChange: ((_ isShow: Bool, _ doneDrawing: @escaping () -> ()) -> ())?
+    
+    public var decisionHandler: ((_ index: Int) -> (Bool)) = { index in
+        return (index % 2 == 0)
+    }
+    
+    public var fitnessHandler: ((_ val: T?) -> (CGFloat, CGFloat))?
+    
+    public var stopHandele: (() -> ())?
     
     private var gen: Int!
     
@@ -62,18 +74,26 @@ public class MlPoll<T: DNA> {
     
     private var agents: [Agent<T>]!
     
+    private var agentsGetters: [(_ index: Int) -> (Agent<T>?)]!
+    
     public var delegate: PollUpdates?
     
     private var mutatingRate: CGFloat!
     
+    private var moveSpeed: CGFloat!
+    
     private var semaphore: DispatchSemaphore = DispatchSemaphore(value: 1)
     
-    public init(num: Int, lifeSpan: CGFloat = 0, mutatingRate: CGFloat = 0) {
+    public init(num: Int = 100, lifeSpan: CGFloat = 0, moveSpeed: CGFloat = 0.5, mutatingRate: CGFloat = 0.1) {
         self.num = num
         self.lifeSpan = lifeSpan
         self.mutatingRate = mutatingRate
+        self.moveSpeed = moveSpeed
         self.gen = 0
+        self.length = 0
         self.agents = [Agent<T>]()
+        self.agentsGetters = [(index: Int) -> (Agent<T>)]()
+        self.agentCompleteTask = [Agent<T>]()
     }
     
     public func saveGeneration(key: String) -> Bool {
@@ -102,7 +122,11 @@ public class MlPoll<T: DNA> {
             guard let agents = parse(jsonData: data) else {
                 return false
             }
-            self.agents = agents
+            self.agents = agents.map {
+                let data = $0.getData()
+                return createAgent(data: data, mutationRate: mutatingRate, extra: data?.extra)
+            }
+//            self.best = agents[Int.random(in: 0..<agents.count)]
             return true
         }
         
@@ -114,7 +138,7 @@ public class MlPoll<T: DNA> {
             if let documentDirectory = FileManager.default.urls(for: .documentDirectory,
                                                                 in: .userDomainMask).first {
                 let fileURL = documentDirectory.appendingPathComponent("\(name).json")
-//                let fileUrl = URL(fileURLWithPath: filePath)
+                //                let fileUrl = URL(fileURLWithPath: filePath)
                 let data = try Data(contentsOf: fileURL)
                 return data
             }
@@ -134,7 +158,13 @@ public class MlPoll<T: DNA> {
         return nil
     }
     
+    public func getAgentsGetters() -> [(_ index: Int) -> (Agent<T>?)] {
+        return agentsGetters
+    }
+    
     public func stop() {
+        //        semaphore.wait()
+        stopHandele?()
         if timer != nil {
             timer.invalidate()
             timer = nil
@@ -142,12 +172,11 @@ public class MlPoll<T: DNA> {
         stopRun = true
     }
     
-    public func contine() {
+    public func `continue`() {
+        //        semaphore.signal()
         stopRun = false
-        for agent in agents {
-            agent.cleanIfNeeded()
-        }
-        self.runGen()
+        semaphore.signal()
+        runGen()
     }
     
     public func getAgents() -> [Agent<T>] {
@@ -165,7 +194,6 @@ public class MlPoll<T: DNA> {
         return best
     }
     
-    
     public func sortAgents() {
         agents.sort { (agent1, agent2) -> Bool in
             return agent1.fitnessVal! > agent2.fitnessVal!
@@ -179,34 +207,46 @@ public class MlPoll<T: DNA> {
         
         var letters = ""
         var indexs = [Int]()
-        for i in 0..<length {
+        for i in 0..<(best.getData()?.length() ?? 0) {
             letters += best.getData()![i] == target[i] ? "\(best.getData()![i])" : empty
             if best.getData()![i] == target[i] {
                 indexs.append(i)
             }
         }
-        return (best.getData()!, "Generation: \(gen!)\n\nGuss: {%@}\n\nSolved: \(CGFloat(best.count!) / CGFloat(length) * 100)%\n\nLetters so far: \(letters)\n\n" as! T, indexs, false)
+        return (best.getData()!, "Generation: \(gen!)\n\nGuss: {%@}\n\nSolved: \(CGFloat(target.length()) / CGFloat(length) * 100)%\n\nLetters so far: \(letters)\n\n" as! T, indexs, false)
     }
     
-    public func start(target: T, length: Int, extra: Any...) {
+    private var agentCompleteTask: [Agent<T>]!
+    
+    public func start(target: T, lengthLimit: Int = 0, extra: Any...) {
         self.target = T(copy: target)
-        self.length = length
+        self.length = Int(lifeSpan == 0 ? CGFloat((lengthLimit == 0 ? target.length() : lengthLimit)) : 20 * (lifeSpan / moveSpeed) + 1)
         self.gen = 0
         best = nil
         
-        if agents == nil {
-            agents = [Agent<T>]()
-        }
-        
         if agents.isEmpty {
             for _ in 0..<num {
-                agents.append(createAgent(mutationRate: mutatingRate, extra: extra))
+                let agent = createAgent(mutationRate: mutatingRate, extra: extra)
+                agents.append(agent)
+                agentsGetters.append { (index: Int) -> (Agent<T>?) in
+                    if self.agents[index].getData() == target {
+                        self.agentCompleteTask.append(self.agents[index])
+                        return nil
+                    }
+                    
+                    return self.agents[index]
+                }
             }
         }
         
         self.runGen()
     }
-
+    
+    public func resetAgents() {
+        agents = [Agent<T>]()
+        agentsGetters = [(Int) -> (Agent<T>)]()
+    }
+    
     private let empty =  "  _  "
     //    private var increaseLimit: CGFloat = 0.002
     
@@ -219,20 +259,24 @@ public class MlPoll<T: DNA> {
     private func runGen() {
         //        randomFix = [String: Int]()
         DispatchQueue.init(label: "Work").async { [self] in
-            guard !didFinish() else {
-                let guess = best!.getData()!
-                
-                var chromosomeIndexs = [Int]()
-                for i in 0..<guess.length() {
-                    chromosomeIndexs.append(i)
+            //        if safe < num / 2 {
+            if lifeSpan == 0 {
+                //                DispatchQueue.init(label: "Work").async {
+                semaphore.wait()
+                agentCompleteTask = [Agent<T>]()
+                guard !isSolved() else {
+                    return
                 }
-                
-                finish?(best!, "Generation: \(gen!)\n\nGuss: {%@}\n\nSolved: \(100)%\n\nLetters so far: \(guess)\n\n" as! T, chromosomeIndexs, true)
+                selection()
+                self.continue()
+                semaphore.signal()
+                //                }
                 return
             }
-            //        if safe < num / 2 {
+            
             DispatchQueue.main.async {
-                timer = Timer(timeInterval: TimeInterval(lifeSpan), repeats: true) { (_) in
+                semaphore.wait()
+                timer = Timer(timeInterval: TimeInterval(lifeSpan), repeats: false) { _ in
                     guard !stopRun else {
                         if timer != nil {
                             self.timer.invalidate()
@@ -241,16 +285,57 @@ public class MlPoll<T: DNA> {
                         return
                         
                     }
-                    semaphore.wait()
-                    self.evolution()
-                    self.generationChange?(true)
+                    stop()
+                    markBest()
+                    selection()
+                    cleanIfNeeded()
+                    self.continue()
                     semaphore.signal()
                 }
                 
                 RunLoop.current.add(timer, forMode: .common)
             }
-            //        }
         }
+    }
+    
+    public func cleanIfNeeded() {
+        for agent in agents {
+            agent.cleanIfNeeded()
+        }
+    }
+    
+    private func selection() {
+        self.evolution()
+        self.generationChange?(true, {
+           
+        })
+    }
+    
+    private func markBest () {
+        var score: CGFloat = 0
+        for agent in agents {
+            if agent.fitnessVal! >= score {
+                rateOfChange *= best != nil && best!.getData() == agent.getData() ? rateOfChangeEvolution : 1
+                self.best = agent
+                score = agent.fitnessVal!
+            }
+        }
+    }
+    
+    private func isSolved() -> Bool {
+        guard !didFinish() else {
+            let guess = best!.getData()!
+            
+            var chromosomeIndexs = [Int]()
+            for i in 0..<guess.length() {
+                chromosomeIndexs.append(i)
+            }
+            
+            finish?(best!, "Generation: \(gen!)\n\nGuss: {%@}\n\nSolved: \(100)%\n\nLetters so far: \(guess)\n\n" as! T, chromosomeIndexs, true)
+            return true
+        }
+        
+        return false
     }
     
     private func didFinish() -> Bool {
@@ -280,8 +365,23 @@ public class MlPoll<T: DNA> {
         safe += 1
     }
     
+    private final let fixedGrowth: CGFloat = 0.1
+    private lazy var normalizeDimension: CGFloat = 1.44 * (moveSpeed > 0 ? ((lifeSpan / moveSpeed) + 1) : lifeSpan)
+    
     private func newGeneration() {
-        var tempAgents = [Agent<T>]()
+        
+        for i in 0..<agents.count {
+            if agentCompleteTask.contains(where: { (agent) -> Bool in return agents[i] == agent }) {
+                let extraDimension = agents[i].extraDimension
+                let growth = extraDimension != nil ? pow((1 - (extraDimension! / normalizeDimension)), 2): fixedGrowth
+                let newFitnessVal = min(1, (agents[i].fitnessVal! + growth))
+//                print("Before Best Vs Win: Best: \(best!.fitnessVal!), Win: \(agents[i].fitnessVal!), extra: \(growth)")
+                agents[i].fitnessVal! = newFitnessVal
+            }
+        }
+        
+        agentCompleteTask = [Agent<T>]()
+        
         let sort = agents!
         let sorted = sort.sorted { (obj, obj2) -> Bool in
             guard let fitness = obj.fitnessVal , let fitness2 = obj2.fitnessVal else { return false }
@@ -294,7 +394,8 @@ public class MlPoll<T: DNA> {
             let r = Int.random(in: 0..<agents.count)
             i -= 1
             //            print("increase limit: \(increaseLimit) , val: \(agents[r].fitnessVal! * 2)")
-            if agents[r].fitnessVal! < best!.fitnessVal! * 0.4 {
+            let bestScore = (best?.fitnessVal != nil && best!.fitnessVal! > 0) ? best!.fitnessVal! : 0.01
+            if agents[r].fitnessVal! < bestScore * 0.4 {
                 let _ = agents.remove(at: r)
                 //                print("removed: \(removed.toString())")
             }
@@ -303,13 +404,16 @@ public class MlPoll<T: DNA> {
         //        increaseLimit *= 1.002
         //        print("increaseLimit: \(increaseLimit)")
         //        increaseLimit = min(0.04, increaseLimit)
+        
+        var tempAgents = [Agent<T>]()
+        
         for _ in 0..<num {
             var a = pickOne()
             var b = pickOne()
             
             var same = a.getData() == b.getData()
             rateOfChange *= same ? rateOfChangeEvolution : 1
-            
+
             //            var c = 0
             var stopCount = 0
             while same && stopCount < theSameMaxLoop {
@@ -336,14 +440,14 @@ public class MlPoll<T: DNA> {
                 b = fix.b
                 agent = combine(a: a, b: b).mutation()
                 stopCount += 1
-                floatingPoint += stopCount == betterScoreMaxLoop ? 0.004 : 0
+                floatingPoint += stopCount == betterScoreMaxLoop ? lifeSpan == 0 ? 0.004 : 0.8 : 0
                 if floatingPoint >= 1 {
                     betterScoreMaxLoop -= 1
                     betterScoreMaxLoop = max(betterScoreMaxLoop, 0)
                     floatingPoint -= 1
                 }
             }
-            
+//
             //            print("total for loop: \(c)")
             
             if rateOfChange < 0.0005 {
@@ -356,10 +460,6 @@ public class MlPoll<T: DNA> {
         }
         
         agents = tempAgents
-        
-        for agent in agents {
-            agent.cleanIfNeeded()
-        }
         
         gen += 1
     }
@@ -379,14 +479,30 @@ public class MlPoll<T: DNA> {
     }
     
     private func combine(a: Agent<T>, b: Agent<T>) -> Agent<T> {
-        var dna = T.empty()
-        for i in 0..<length {
-            if i > length / 2 {
+    var dna = T.empty()
+        var maxAgent: Agent<T>!
+        var minLength = 0
+        
+        if a.getData()?.length() ?? 0 < b.getData()?.length() ?? 0 {
+            minLength = a.getData()?.length() ?? 0
+            maxAgent = b
+        }
+        else {
+            minLength = b.getData()?.length() ?? 0
+            maxAgent = a
+        }
+        
+        for i in 0..<minLength {
+            if decisionHandler(i) {
                 dna += a.getDnaAt(index: i) ?? T.empty()
             }
             else {
                 dna += b.getDnaAt(index: i) ?? T.empty()
             }
+        }
+        
+        for j in 0..<(length - minLength) {
+            dna += maxAgent.getDnaAt(index: (minLength + j)) ?? T.empty()
         }
         
         return createAgent(data: T(copy: dna), mutationRate: mutatingRate)
@@ -395,19 +511,22 @@ public class MlPoll<T: DNA> {
     private func createAgent(data: T? = nil, mutationRate: CGFloat, extra: Any? = nil) -> Agent<T> {
         Agent(mutationRate: mutationRate,
               random: { [self] in
-                return data ?? T.random(length: length, extra: extra)
+                let agentData = data ?? T.random(length: length, extra: extra)
+                return agentData
               }, fitness: { [self] val in
-                return val!.calcFitness(val: target, best: best?.fitnessVal ?? 0.01)
-              }, getDNA: { [self] val, index in
-                return getValueAt(val: val, index: index)
-              }, mutate: { [self] val, rate  in
+                let bestScore = (best?.fitnessVal != nil && best!.fitnessVal! > 0) ? best!.fitnessVal! : 0.01
+                return fitnessHandler?(val!) ?? val!.calcFitness(val: target, best: bestScore)
+              }, getDNA: { val, index in
+                return val![index]
+              }, mutate: { val, rate  in
                 return val!.mutate(rate: rate)
               })
     }
     
     private func pickOne() -> Agent<T> {
         var index = 0
-        var r = CGFloat.random(in: 0...(best?.fitnessVal ?? 0.01))
+        let end: CGFloat = lifeSpan == 0 ? 1 : 1 //(best?.fitnessVal ?? 0.01)
+        var r = CGFloat.random(in: 0...end)
         
         while r > 0 {
             r = r - (agents![index].fitnessVal ?? 0)
@@ -437,18 +556,28 @@ public class Agent<T: DNA>: Encodable & Decodable {
     
     private lazy var calc = fitness?(data)
     public lazy var fitnessVal = calc?.val
-    lazy var count = calc?.count
+    lazy var extraDimension = calc?.count
     
     private var mutationRate: CGFloat!
     
     public required init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-          data = try container.decode(T.self, forKey: .data)
-          fitnessVal = try container.decode(CGFloat.self, forKey: .fitness)
+        data = try container.decode(T.self, forKey: .data)
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(data, forKey: .data)
     }
     
     public func hash(into hasher: inout Hasher) {
         data.hash(into: &hasher)
+    }
+    
+    private init() {
+        data = T.empty()
+        fitnessVal = 0
+        extraDimension = 0
     }
     
     init(mutationRate: CGFloat = 0.1, random: @escaping () -> (T), fitness: @escaping (T?) -> (CGFloat, CGFloat), getDNA: @escaping (T?, _ index: Int) -> (T), mutate: @escaping (T?, CGFloat) -> (T)) {
@@ -469,16 +598,14 @@ public class Agent<T: DNA>: Encodable & Decodable {
     }
     
     enum CodingKeys: String, CodingKey {
-        case data, fitness
+        case data
     }
     
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(data, forKey: .data)
-        try container.encode(fitnessVal, forKey: .fitness)
+    public static func empty() -> Agent<T> {
+        return Agent<T>()
     }
     
-    func toString() -> String {
+    public func toString() -> String {
         return "Data = \(data ?? "No Data" as! T), Fitness = \(fitnessVal ?? 0)"
     }
     
@@ -496,168 +623,21 @@ public class Agent<T: DNA>: Encodable & Decodable {
         return self
     }
     
+    private let sem = DispatchSemaphore(value: 1)
+    
     public func getData() -> T? {
+        sem.wait()
+        defer {
+            sem.signal()
+        }
         return data
     }
     
     func find(target: T) -> Bool {
-        return data?.find(target: target, count: count ?? 0) ?? false
+        return data?.find(target: target, count: extraDimension ?? 0) ?? false
     }
     
     func cleanIfNeeded() {
         data?.cleanBetweenGens()
-    }
-}
-
-extension StringProtocol {
-    subscript(offset: Int) -> Character { self[index(startIndex, offsetBy: offset)] }
-    subscript(range: Range<Int>) -> SubSequence {
-        let startIndex = index(self.startIndex, offsetBy: range.lowerBound)
-        return self[startIndex..<index(startIndex, offsetBy: range.count)]
-    }
-    subscript(range: ClosedRange<Int>) -> SubSequence {
-        let startIndex = index(self.startIndex, offsetBy: range.lowerBound)
-        return self[startIndex..<index(startIndex, offsetBy: range.count)]
-    }
-    subscript(range: PartialRangeFrom<Int>) -> SubSequence { self[index(startIndex, offsetBy: range.lowerBound)...] }
-    subscript(range: PartialRangeThrough<Int>) -> SubSequence { self[...index(startIndex, offsetBy: range.upperBound)] }
-    subscript(range: PartialRangeUpTo<Int>) -> SubSequence { self[..<index(startIndex, offsetBy: range.upperBound)] }
-}
-
-extension String: DNA, Chromosome {
-    
-    public func cleanBetweenGens() {}
-    
-    public var extra: Any? {
-        get {
-            return nil
-        }
-        set {}
-    }
-    
-    public func printDescription() {
-//        print("Description: \(self)")
-    }
-    
-    public init(copy string: String) {
-        self = string
-    }
-    
-    public static func emptyChromosome() -> Chromosome {
-        return ""
-    }
-    
-    public static func random(length: Int, extra: Any?) -> String {
-        return randomString(length: length, targetLength: 0, numOfWorkers: 0)
-    }
-    
-    private static func randomString(length: Int, targetLength: Int, numOfWorkers: Int) -> String {
-        
-        let letters : NSString = "abcdefghijklmnopqrstuvwxyz'ABCDEFGHIJKLMNOPQRSTUVWXYZ; .,?:@#$%^&*()_+=-±!0123456789\n    "
-        let len = UInt32(letters.length)
-        
-        var randomString = ""
-        
-        //        var repeatFlag = true
-        //        while repeatFlag {
-        for _ in 0 ..< length {
-            let rand = arc4random_uniform(len)
-            var nextChar = letters.character(at: Int(rand))
-            randomString += NSString(characters: &nextChar, length: 1) as String
-            //                if targetLength >= 0 {
-            //                    randomFix![randomString] = randomFix![randomString] ?? 0
-            //                }
-            //            }
-            //            if targetLength < 0 {
-            //                repeatFlag = false
-            //            }
-            //            else {
-            //                randomFix![randomString]! += 1
-            //                let randomRatio: CGFloat = CGFloat(randomFix![randomString]!) / CGFloat(targetLength)
-            //                let multi: CGFloat = CGFloat(numOfWorkers / targetLength) * ratio
-            //                repeatFlag = randomRatio * multi >= 1
-            //
-            ////                print("value: char: \(randomString) : score: \(randomFix![randomString] ?? 0), randomRatio: \(randomRatio), multi: \(multi), total: \(randomRatio * multi)")
-            //
-            //                if repeatFlag {
-            ////                    print("Stop... value: char: \(randomString) : score: \(randomFix![randomString] ?? 0), randomRatio: \(randomRatio), multi: \(multi), total: \(randomRatio * multi)")
-            //                    randomFix![randomString]! /= 10
-            //                }
-            //            }
-        }
-        
-        return randomString
-    }
-    
-    public static func +=(lhs: inout String, rhs: String) {
-        lhs = lhs + rhs
-    }
-    
-    public static func +=(lhs: inout String, rhs: Chromosome) {
-        lhs = lhs + (rhs as! String)
-    }
-    
-    public static func ==(lhs: String, rhs: String) -> Bool {
-        return lhs.elementsEqual(rhs)
-    }
-    
-    public subscript(offset: Int) -> String {
-        get {
-            return "\(self[index(startIndex, offsetBy: offset)])"
-        }
-        set {
-            self = (self as NSString).replacingCharacters(in: NSRange(location: offset, length: 1), with: newValue)
-        }
-    }
-    
-    public static func empty() -> String {
-        return ""
-    }
-    
-    public func length() -> Int {
-        return count
-    }
-    
-    func elementsEqual(other: String) -> Bool {
-        return elementsEqual(other)
-    }
-    
-    public func calcFitness(val: String?, best: CGFloat) -> (val: CGFloat, count: CGFloat) {
-        guard let  val = val else { return (0, 0) }
-        var count: CGFloat = 0.1
-        
-        for i in 0..<val.count {
-            if self[i] == val[i] {
-                count += 1
-            }
-        }
-        let x = count / CGFloat(val.count)
-        return (best * (x / best) / CGFloat(val.count), CGFloat(Int(count)))
-    }
-    
-    public func mutate(rate: CGFloat) -> Self {
-        
-        //        guard let val = val else { return "" }
-        
-        var tempVal = ""
-        
-        for i in 0..<length() {
-            let c = self[i] as Character
-            
-            let r = CGFloat.random(in: 0...1)
-            
-            if r < rate {
-                tempVal += String.random(length: 1, extra: nil)
-            }
-            else {
-                tempVal += "\(c)"
-            }
-        }
-        
-        return tempVal
-    }
-    
-    public func find(target: String, count: CGFloat) -> Bool {
-        return self == target && Int(count) == length()
     }
 }
