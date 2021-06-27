@@ -29,6 +29,8 @@ public protocol DNA: Equatable & Hashable & Encodable & Decodable {
     
     var isCompletedTask: ((_ val: Self) -> (Bool))? { get set }
     
+    func distanceTo(target: Self) -> CGFloat
+    
     func cleanBetweenGens()
     
     var extra: Any? { get set }
@@ -53,7 +55,7 @@ public class MlPoll<T: DNA> {
     
     public var generationChange: ((_ isShow: Bool, _ doneDrawing: @escaping () -> ()) -> ())?
     
-    public var decisionHandler: ((_ index: Int) -> (Bool)) = { index in
+    public var decisionHandler: ((_ index: Int, _ length: Int, _ fitnessVals: (queryVal: CGFloat, otherVal: CGFloat), _ extraDimension: CGFloat) -> (Bool)) = { index, length, fitnessVals, extraDimension  in
         return (index % 2 == 0)
     }
     
@@ -217,6 +219,7 @@ public class MlPoll<T: DNA> {
     }
     
     private var agentCompleteTask: [Agent<T>]!
+    private var agentWithBestPointForGeneration: ((agent: Agent<T>, dist: CGFloat ,index: Int))? = nil
     
     public func start(target: T, lengthLimit: Int = 0, extra: Any...) {
         self.target = T(copy: target)
@@ -228,18 +231,27 @@ public class MlPoll<T: DNA> {
             for _ in 0..<num {
                 let agent = createAgent(mutationRate: mutatingRate, extra: extra)
                 agents.append(agent)
-                agentsGetters.append { (index: Int) -> (Agent<T>?) in
-                    if self.agents[index].getData() == target {
-                        self.agentCompleteTask.append(self.agents[index])
+                agentsGetters.append { [weak self] (index: Int) -> (Agent<T>?) in
+                    guard let strongSelf = self else { return nil }
+                    
+                    if strongSelf.agents[index].getData() == target {
+                        strongSelf.agentCompleteTask.append(strongSelf.agents[index])
                         return nil
                     }
                     
-                    return self.agents[index]
+                    return strongSelf.agents[index]
                 }
             }
         }
         
         self.runGen()
+    }
+    
+    public func checkIfShouldKeep(agent: Agent<T>) {
+        let dist = agent.getData()!.distanceTo(target: target)
+        if agentWithBestPointForGeneration == nil || agentWithBestPointForGeneration!.dist < dist {
+            agentWithBestPointForGeneration = (agent: agent, dist: dist, index: Int(agent.extraDimension ?? -1))
+        }
     }
     
     public func resetAgents() {
@@ -367,6 +379,7 @@ public class MlPoll<T: DNA> {
     
     private final let fixedGrowth: CGFloat = 0.1
     private lazy var normalizeDimension: CGFloat = 1.44 * (moveSpeed > 0 ? ((lifeSpan / moveSpeed) + 1) : lifeSpan)
+//    private var bestPointOverAll: ((agent: Agent<T>, index: Int))? = nil
     
     private func newGeneration() {
         
@@ -375,12 +388,21 @@ public class MlPoll<T: DNA> {
                 let extraDimension = agents[i].extraDimension
                 let growth = extraDimension != nil ? pow((1 - (extraDimension! / normalizeDimension)), 2): fixedGrowth
                 let newFitnessVal = min(1, (agents[i].fitnessVal! + growth))
-//                print("Before Best Vs Win: Best: \(best!.fitnessVal!), Win: \(agents[i].fitnessVal!), extra: \(growth)")
+                //                print("Before Best Vs Win: Best: \(best!.fitnessVal!), Win: \(agents[i].fitnessVal!), extra: \(growth)")
                 agents[i].fitnessVal! = newFitnessVal
+                
+                agents[i].immutable = extraDimension != nil ? Int(extraDimension!) : nil
+            }
+            else if !agentCompleteTask.isEmpty {
+                agents[i].immutable = nil
+            }
+            else if let best = agentWithBestPointForGeneration?.agent, agents[i] == best {
+                agents[i].immutable = agentWithBestPointForGeneration?.index
             }
         }
         
         agentCompleteTask = [Agent<T>]()
+        agentWithBestPointForGeneration = nil
         
         let sort = agents!
         let sorted = sort.sorted { (obj, obj2) -> Bool in
@@ -493,7 +515,13 @@ public class MlPoll<T: DNA> {
         }
         
         for i in 0..<minLength {
-            if decisionHandler(i) {
+            if let aim = a.immutable, i <= aim {
+                dna += a.getDnaAt(index: i) ?? T.empty()
+            }
+            else if let bim = b.immutable, i <= bim {
+                dna += b.getDnaAt(index: i) ?? T.empty()
+            }
+            else if decisionHandler(i, minLength, (a.fitnessVal!, b.fitnessVal!), a.extraDimension!) {
                 dna += a.getDnaAt(index: i) ?? T.empty()
             }
             else {
@@ -509,23 +537,31 @@ public class MlPoll<T: DNA> {
     }
     
     private func createAgent(data: T? = nil, mutationRate: CGFloat, extra: Any? = nil) -> Agent<T> {
-        Agent(mutationRate: mutationRate,
-              random: { [self] in
-                let agentData = data ?? T.random(length: length, extra: extra)
-                return agentData
-              }, fitness: { [self] val in
-                let bestScore = (best?.fitnessVal != nil && best!.fitnessVal! > 0) ? best!.fitnessVal! : 0.01
-                return fitnessHandler?(val!) ?? val!.calcFitness(val: target, best: bestScore)
-              }, getDNA: { val, index in
-                return val![index]
-              }, mutate: { val, rate  in
-                return val!.mutate(rate: rate)
-              })
+        
+        let agent = Agent(mutationRate: mutationRate,
+                          random: { [self] () -> (T) in
+                            let agentData = data ?? T.random(length: length, extra: extra)
+                            return agentData
+                          }, fitness: { [self] val in
+                            let bestScore = (best?.fitnessVal != nil && best!.fitnessVal! > 0) ? best!.fitnessVal! : 0.01
+                            return fitnessHandler?(val!) ?? val!.calcFitness(val: target, best: bestScore)
+                          }, getDNA: { val, index in
+                            return val![index]
+                          }, mutate: { val, rate  in
+                            return val!.mutate(rate: rate)
+                          })
+        
+        agent.askToBeKept = { [weak self] agent in
+            guard let strongSelf = self else { return }
+            strongSelf.checkIfShouldKeep(agent: agent)
+        }
+        
+        return agent
     }
     
     private func pickOne() -> Agent<T> {
         var index = 0
-        let end: CGFloat = lifeSpan == 0 ? 1 : 1 //(best?.fitnessVal ?? 0.01)
+        let end: CGFloat = lifeSpan == 0 ? 1 : (best?.fitnessVal ?? 0.4)
         var r = CGFloat.random(in: 0...end)
         
         while r > 0 {
@@ -557,6 +593,10 @@ public class Agent<T: DNA>: Encodable & Decodable {
     private lazy var calc = fitness?(data)
     public lazy var fitnessVal = calc?.val
     lazy var extraDimension = calc?.count
+    
+    fileprivate var immutable: Int? = nil
+    
+    fileprivate var askToBeKept: ((_ agent: Agent<T>) -> ())!
     
     private var mutationRate: CGFloat!
     
@@ -631,6 +671,10 @@ public class Agent<T: DNA>: Encodable & Decodable {
             sem.signal()
         }
         return data
+    }
+    
+    public func checkIfShouldKeep()  {
+        askToBeKept(self)
     }
     
     func find(target: T) -> Bool {

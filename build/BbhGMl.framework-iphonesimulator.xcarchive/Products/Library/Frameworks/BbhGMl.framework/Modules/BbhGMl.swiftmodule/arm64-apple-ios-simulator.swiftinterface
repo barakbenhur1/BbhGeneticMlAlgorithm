@@ -21,6 +21,7 @@ public protocol DNA : Swift.Decodable, Swift.Encodable, Swift.Hashable {
   static func += (lhs: inout Self, rhs: Self)
   subscript(offset: Swift.Int) -> Self { get set }
   var isCompletedTask: ((Self) -> (Swift.Bool))? { get set }
+  func distanceTo(target: Self) -> CoreGraphics.CGFloat
   func cleanBetweenGens()
   var extra: Any? { get set }
 }
@@ -30,7 +31,7 @@ public protocol PollUpdates {
 public class MlPoll<T> where T : BbhGMl.DNA {
   public var finish: ((BbhGMl.Agent<T>, T, [Swift.Int], Swift.Bool) -> ())?
   public var generationChange: ((Swift.Bool, @escaping () -> ()) -> ())?
-  public var decisionHandler: (Swift.Int) -> (Swift.Bool)
+  public var decisionHandler: (Swift.Int, Swift.Int, (queryVal: CoreGraphics.CGFloat, otherVal: CoreGraphics.CGFloat), CoreGraphics.CGFloat) -> (Swift.Bool)
   public var fitnessHandler: ((T?) -> (CoreGraphics.CGFloat, CoreGraphics.CGFloat))?
   public var stopHandele: (() -> ())?
   public var delegate: BbhGMl.PollUpdates?
@@ -46,6 +47,7 @@ public class MlPoll<T> where T : BbhGMl.DNA {
   public func sortAgents()
   public func getUpdatedData() -> (guess: T, val: T, lettersIndexs: [Swift.Int], done: Swift.Bool)
   public func start(target: T, lengthLimit: Swift.Int = 0, extra: Any...)
+  public func checkIfShouldKeep(agent: BbhGMl.Agent<T>)
   public func resetAgents()
   public func cleanIfNeeded()
   @objc deinit
@@ -62,5 +64,6 @@ public class MlPoll<T> where T : BbhGMl.DNA {
   public func toString() -> Swift.String
   public static func == (lhs: BbhGMl.Agent<T>, rhs: BbhGMl.Agent<T>) -> Swift.Bool
   public func getData() -> T?
+  public func checkIfShouldKeep()
   @objc deinit
 }
