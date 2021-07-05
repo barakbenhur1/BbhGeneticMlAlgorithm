@@ -215,7 +215,7 @@ public class MlPoll<T: DNA> {
                 indexs.append(i)
             }
         }
-        return (best.getData()!, "Generation: \(gen!)\n\nGuss: {%@}\n\nSolved: \(CGFloat(target.length()) / CGFloat(length) * 100)%\n\nLetters so far: \(letters)\n\n" as! T, indexs, false)
+        return (best.getData()!, "Generation: \(gen!)\n\nGuss: {%@}\n\nSolved: \((CGFloat(indexs.count) / CGFloat(target.length())) * 100)%\n\nLetters so far: \(letters)\n\n" as! T, indexs, false)
     }
     
     private var agentCompleteTask: [Agent<T>]!
@@ -378,7 +378,7 @@ public class MlPoll<T: DNA> {
     }
     
     private final let fixedGrowth: CGFloat = 0.1
-    private lazy var normalizeDimension: CGFloat = 1.44 * (moveSpeed > 0 ? ((lifeSpan / moveSpeed) + 1) : lifeSpan)
+    private lazy var normalizeDimension: CGFloat = (moveSpeed > 0 ? ((lifeSpan / moveSpeed) + 1) : lifeSpan)
 //    private var bestPointOverAll: ((agent: Agent<T>, index: Int))? = nil
     
     private func newGeneration() {
@@ -386,9 +386,10 @@ public class MlPoll<T: DNA> {
         for i in 0..<agents.count {
             if agentCompleteTask.contains(where: { (agent) -> Bool in return agents[i] == agent }) {
                 let extraDimension = agents[i].extraDimension
-                let growth = extraDimension != nil ? pow((1 - (extraDimension! / normalizeDimension)), 2): fixedGrowth
+                let growth = extraDimension != nil ? (1 - (extraDimension! / normalizeDimension)) * 0.2 : fixedGrowth
                 let newFitnessVal = min(1, (agents[i].fitnessVal! + growth))
                 //                print("Before Best Vs Win: Best: \(best!.fitnessVal!), Win: \(agents[i].fitnessVal!), extra: \(growth)")
+                print("fit: \(agents[i].fitnessVal!) ,  ed: \(extraDimension!), grow: \(growth)")
                 agents[i].fitnessVal! = newFitnessVal
                 
                 agents[i].immutable = extraDimension != nil ? Int(extraDimension!) : nil
@@ -561,7 +562,7 @@ public class MlPoll<T: DNA> {
     
     private func pickOne() -> Agent<T> {
         var index = 0
-        let end: CGFloat = lifeSpan == 0 ? 1 : (best?.fitnessVal ?? 0.4)
+        let end: CGFloat = lifeSpan == 0 ? 1 : (best?.fitnessVal ?? 0.1)
         var r = CGFloat.random(in: 0...end)
         
         while r > 0 {
@@ -634,6 +635,7 @@ public class Agent<T: DNA>: Encodable & Decodable {
         self.fitness = agent.fitness
         self.mutate = agent.mutate
         self.getDNA = agent.getDNA
+        self.extraDimension = agent.extraDimension
         self.data = T(copy: agent.data!)
     }
     
