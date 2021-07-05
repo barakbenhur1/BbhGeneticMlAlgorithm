@@ -386,7 +386,7 @@ public class MlPoll<T: DNA> {
         for i in 0..<agents.count {
             if agentCompleteTask.contains(where: { (agent) -> Bool in return agents[i] == agent }) {
                 let extraDimension = agents[i].extraDimension
-                let growth = extraDimension != nil ? (1 - (extraDimension! / normalizeDimension)) * 0.2 : fixedGrowth
+                let growth = extraDimension != nil ? (1 - (extraDimension! / normalizeDimension)) * 0.4 : fixedGrowth
                 let newFitnessVal = min(1, (agents[i].fitnessVal! + growth))
                 //                print("Before Best Vs Win: Best: \(best!.fitnessVal!), Win: \(agents[i].fitnessVal!), extra: \(growth)")
                 print("fit: \(agents[i].fitnessVal!) ,  ed: \(extraDimension!), grow: \(growth)")
