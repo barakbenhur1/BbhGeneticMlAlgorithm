@@ -36,14 +36,14 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			0Wk9Z3EhxR2nEfnzZGa1fvj38mTBI27hzc4hGvz2g7g=
+			dGH9h6BZJK+6A9CEmZKWFvTcZC3aCeTsLXoiUo+7MZ8=
 			</data>
 		</dict>
 		<key>Modules/BbhGMl.swiftmodule/arm64-apple-ios-macabi.swiftmodule</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			tF4vnD75VDKHql5yBEoP2RgDMlBBXXkG7CormOePoBc=
+			KGyi+EqDM+kJhAUKurxdWi1tmdFp7xDrYOdK0RYm1bI=
 			</data>
 		</dict>
 		<key>Modules/BbhGMl.swiftmodule/arm64.swiftdoc</key>
@@ -57,14 +57,14 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			0Wk9Z3EhxR2nEfnzZGa1fvj38mTBI27hzc4hGvz2g7g=
+			dGH9h6BZJK+6A9CEmZKWFvTcZC3aCeTsLXoiUo+7MZ8=
 			</data>
 		</dict>
 		<key>Modules/BbhGMl.swiftmodule/arm64.swiftmodule</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			tF4vnD75VDKHql5yBEoP2RgDMlBBXXkG7CormOePoBc=
+			KGyi+EqDM+kJhAUKurxdWi1tmdFp7xDrYOdK0RYm1bI=
 			</data>
 		</dict>
 		<key>Modules/BbhGMl.swiftmodule/x86_64-apple-ios-macabi.swiftdoc</key>
@@ -78,14 +78,14 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			2lliOJgkFk8TUnaaH9u4OEXWmZtaof3eBRJ0WUGwRSI=
+			A/TR8jNsbRv6qUCqRhDYQFOMy6SsRtvkFjt4eseS3KY=
 			</data>
 		</dict>
 		<key>Modules/BbhGMl.swiftmodule/x86_64-apple-ios-macabi.swiftmodule</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			zz5ArLpiFw0RCNP99zh+IOq1B+VrNgAqcruHh+CCRF8=
+			gNHb1b+ORMnzqCUwCuGCbBwLAeuorj0PDWHNbyV3qvY=
 			</data>
 		</dict>
 		<key>Modules/BbhGMl.swiftmodule/x86_64.swiftdoc</key>
@@ -99,14 +99,14 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			2lliOJgkFk8TUnaaH9u4OEXWmZtaof3eBRJ0WUGwRSI=
+			A/TR8jNsbRv6qUCqRhDYQFOMy6SsRtvkFjt4eseS3KY=
 			</data>
 		</dict>
 		<key>Modules/BbhGMl.swiftmodule/x86_64.swiftmodule</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			zz5ArLpiFw0RCNP99zh+IOq1B+VrNgAqcruHh+CCRF8=
+			gNHb1b+ORMnzqCUwCuGCbBwLAeuorj0PDWHNbyV3qvY=
 			</data>
 		</dict>
 		<key>Modules/module.modulemap</key>

@@ -21,7 +21,9 @@ public protocol DNA: Equatable & Hashable & Encodable & Decodable {
     func mutate(rate: CGFloat) -> Self
     func find(target: Self, count: CGFloat) -> Bool
     func elementsEqual(_ other: Self) -> Bool
+    func equalTo(byEndGoal other: Self) -> Bool
     static func ==(lhs: Self, rhs: Self) -> Bool
+    static func !=(lhs: Self, rhs: Self) -> Bool
     static func random(length: Int, extra: Any?) -> Self
     static func +=(lhs: inout Self, rhs: Self)
     //    static func +=(lhs: inout Self, rhs: Chromosome)
@@ -69,10 +71,10 @@ public class MlPoll<T: DNA> {
     final private let rateOfChangeEvolution: CGFloat = 0.9996
     
     private let theSameMaxLoop = 4
-    private var betterScoreMaxLoop = 6
+    private var betterScoreMaxLoop = 4
     private var floatingPoint: CGFloat = 0
     
-    private var lifeSpan: CGFloat = 0
+    private var lifeSpan: CGFloat!
     
     private var agents: [Agent<T>]!
     
@@ -84,13 +86,16 @@ public class MlPoll<T: DNA> {
     
     private var moveSpeed: CGFloat!
     
+    private var trackSolveTime: Bool!
+    
     private var semaphore: DispatchSemaphore = DispatchSemaphore(value: 1)
     
-    public init(num: Int = 100, lifeSpan: CGFloat = 0, moveSpeed: CGFloat = 0.5, mutatingRate: CGFloat = 0.1) {
+    public init(num: Int = 100, mutatingRate: CGFloat = 0.1, lifeSpanBundle bundle: (lifeSpan: CGFloat ,moveSpeed: CGFloat, trackSolveTime: Bool)? = nil) {
         self.num = num
-        self.lifeSpan = lifeSpan
         self.mutatingRate = mutatingRate
-        self.moveSpeed = moveSpeed
+        self.lifeSpan = bundle != nil ? bundle!.lifeSpan : 0
+        self.moveSpeed = bundle != nil ? bundle!.moveSpeed : 0
+        self.trackSolveTime = bundle != nil ? bundle!.trackSolveTime : false
         self.gen = 0
         self.length = 0
         self.agents = [Agent<T>]()
@@ -234,16 +239,21 @@ public class MlPoll<T: DNA> {
                 agentsGetters.append { [weak self] (index: Int) -> (Agent<T>?) in
                     guard let strongSelf = self else { return nil }
                     
-                    if strongSelf.agents[index].getData() == target {
-                        strongSelf.agentCompleteTask.append(strongSelf.agents[index])
+                    if strongSelf.agents[index].getData()!.equalTo(byEndGoal: target) {
+                        if !strongSelf.agentCompleteTask.contains(where: { agent in return agent == strongSelf.agents[index] }) {
+                            strongSelf.agents[index].trackSolveTime(start: false)
+                            strongSelf.agents[index].didSolve = true
+                            strongSelf.agentCompleteTask.append(strongSelf.agents[index])
+                        }
+                        
                         return nil
                     }
                     
                     return strongSelf.agents[index]
                 }
             }
-        }
-        
+    }
+    
         self.runGen()
     }
     
@@ -298,7 +308,7 @@ public class MlPoll<T: DNA> {
                         
                     }
                     stop()
-                    markBest()
+//                    markBest()
                     selection()
                     cleanIfNeeded()
                     self.continue()
@@ -377,19 +387,23 @@ public class MlPoll<T: DNA> {
         safe += 1
     }
     
-    private final let fixedGrowth: CGFloat = 0.1
-    private lazy var normalizeDimension: CGFloat = (moveSpeed > 0 ? ((lifeSpan / moveSpeed) + 1) : lifeSpan)
+    private final let fixedGrowth: CGFloat = 10
+//    private lazy var normalizeDimension: CGFloat = (moveSpeed > 0 ? ((lifeSpan / moveSpeed) + 1) : lifeSpan)
 //    private var bestPointOverAll: ((agent: Agent<T>, index: Int))? = nil
     
     private func newGeneration() {
-        
+        if lifeSpan > 0 {
         for i in 0..<agents.count {
+//            print("i: \(i), Fitness: \(agents[i].fitnessVal!), solved: \(agents[i].didSolve)")
             if agentCompleteTask.contains(where: { (agent) -> Bool in return agents[i] == agent }) {
                 let extraDimension = agents[i].extraDimension
-                let growth = extraDimension != nil ? (1 - (extraDimension! / normalizeDimension)) * 0.4 : fixedGrowth
-                let newFitnessVal = min(1, (agents[i].fitnessVal! + growth))
-                //                print("Before Best Vs Win: Best: \(best!.fitnessVal!), Win: \(agents[i].fitnessVal!), extra: \(growth)")
-                print("fit: \(agents[i].fitnessVal!) ,  ed: \(extraDimension!), grow: \(growth)")
+                //let growth = extraDimension ?? fixedGrowth
+                let normalGroth: CGFloat = 0 //(1 / (10 * growth))
+                let solveTime = trackSolveTime ? (pow(1 - (CGFloat(agents[i].solveTime) / lifeSpan), 2) * 0.4) : 0
+                let newFitnessVal = min(1, (agents[i].fitnessVal! + normalGroth  + solveTime))
+                
+//                print("Score: \(newFitnessVal), Fitness: \(agents[i].fitnessVal!) Growth: \(normalGroth), Time: \(CGFloat(agents[i].solveTime)), Score by time: \(solveTime)")
+    
                 agents[i].fitnessVal! = newFitnessVal
                 
                 agents[i].immutable = extraDimension != nil ? Int(extraDimension!) : nil
@@ -401,6 +415,9 @@ public class MlPoll<T: DNA> {
                 agents[i].immutable = agentWithBestPointForGeneration?.index
             }
         }
+            
+            markBest()
+        }
         
         agentCompleteTask = [Agent<T>]()
         agentWithBestPointForGeneration = nil
@@ -410,9 +427,9 @@ public class MlPoll<T: DNA> {
             guard let fitness = obj.fitnessVal , let fitness2 = obj2.fitnessVal else { return false }
             return fitness > fitness2
         }
-        
+
         agents = sorted
-        var i = agents.count / 4
+        var i = agents.count / 8
         while i > 0 {
             let r = Int.random(in: 0..<agents.count)
             i -= 1
@@ -452,27 +469,7 @@ public class MlPoll<T: DNA> {
             //            print("total for loop: \(c)")
             
             var agent = combine(a: a, b: b).mutation()
-            
-            stopCount = 0
-            
-            while agent.fitnessVal! < a.fitnessVal! && agent.fitnessVal! < b.fitnessVal! && stopCount < betterScoreMaxLoop {
-                //                c += 1
-//                print("betterScoreMaxLoop: \(betterScoreMaxLoop)")
-                let fix = tryToFix(a: a, b: b)
-                a = fix.a
-                b = fix.b
-                agent = combine(a: a, b: b).mutation()
-                stopCount += 1
-                floatingPoint += stopCount == betterScoreMaxLoop ? lifeSpan == 0 ? 0.004 : 0.8 : 0
-                if floatingPoint >= 1 {
-                    betterScoreMaxLoop -= 1
-                    betterScoreMaxLoop = max(betterScoreMaxLoop, 0)
-                    floatingPoint -= 1
-                }
-            }
-//
-            //            print("total for loop: \(c)")
-            
+
             if rateOfChange < 0.0005 {
                 //                print("rate of change was: \(rateOfChange)")
                 rateOfChange = 0.5
@@ -534,10 +531,10 @@ public class MlPoll<T: DNA> {
             dna += maxAgent.getDnaAt(index: (minLength + j)) ?? T.empty()
         }
         
-        return createAgent(data: T(copy: dna), mutationRate: mutatingRate)
+        return createAgent(data: T(copy: dna), mutationRate: mutatingRate, didSolve: a.didSolve || b.didSolve)
     }
     
-    private func createAgent(data: T? = nil, mutationRate: CGFloat, extra: Any? = nil) -> Agent<T> {
+    private func createAgent(data: T? = nil, mutationRate: CGFloat, didSolve: Bool = false, extra: Any? = nil) -> Agent<T> {
         
         let agent = Agent(mutationRate: mutationRate,
                           random: { [self] () -> (T) in
@@ -547,10 +544,12 @@ public class MlPoll<T: DNA> {
                             let bestScore = (best?.fitnessVal != nil && best!.fitnessVal! > 0) ? best!.fitnessVal! : 0.01
                             return fitnessHandler?(val!) ?? val!.calcFitness(val: target, best: bestScore)
                           }, getDNA: { val, index in
-                            return val![index]
+                            return T(copy: val![index])
                           }, mutate: { val, rate  in
                             return val!.mutate(rate: rate)
                           })
+        
+        agent.didSolve = didSolve
         
         agent.askToBeKept = { [weak self] agent in
             guard let strongSelf = self else { return }
@@ -601,6 +600,25 @@ public class Agent<T: DNA>: Encodable & Decodable {
     
     private var mutationRate: CGFloat!
     
+    var didSolve = false
+    
+    var solveTime: TimeInterval {
+        get {
+//            timeSem.wait()
+//            defer {
+//                timeSem.signal()
+//            }
+            return didSolve ? (endTime - startTime) * 0.01 : TimeInterval.leastNonzeroMagnitude
+        }
+    }
+    
+    private var startTime: TimeInterval = 0
+    private var endTime: TimeInterval = TimeInterval.leastNonzeroMagnitude
+    
+    private lazy var description = {
+        return String(UInt(bitPattern: ObjectIdentifier(self)))
+    }()
+    
     public required init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         data = try container.decode(T.self, forKey: .data)
@@ -613,6 +631,7 @@ public class Agent<T: DNA>: Encodable & Decodable {
     
     public func hash(into hasher: inout Hasher) {
         data.hash(into: &hasher)
+        "\(self)".hash(into: &hasher)
     }
     
     private init() {
@@ -627,16 +646,19 @@ public class Agent<T: DNA>: Encodable & Decodable {
         self.fitness = fitness
         self.mutate = mutate
         self.getDNA = getDNA
+        self.didSolve = false
+        self.startTime = 0
+        self.endTime = TimeInterval.leastNonzeroMagnitude
+        
+        self.trackSolveTime(start: true)
     }
     
-    init(agent: Agent) {
-        self.mutationRate = agent.mutationRate
-        self.random = agent.random
-        self.fitness = agent.fitness
-        self.mutate = agent.mutate
-        self.getDNA = agent.getDNA
-        self.extraDimension = agent.extraDimension
-        self.data = T(copy: agent.data!)
+    convenience init(agent: Agent) {
+        let extraDimension = agent.extraDimension
+        let data = T(copy: agent.data!)
+        self.init(mutationRate: agent.mutationRate, random: agent.random!, fitness: agent.fitness!, getDNA: agent.getDNA!, mutate: agent.mutate!)
+        self.extraDimension = extraDimension
+        self.data = data
     }
     
     enum CodingKeys: String, CodingKey {
@@ -656,13 +678,31 @@ public class Agent<T: DNA>: Encodable & Decodable {
     }
     
     public static func == (lhs: Agent<T>, rhs: Agent<T>) -> Bool {
-        return lhs.data == rhs.data
+        return lhs.description == rhs.description
+    }
+    
+    public static func != (lhs: Agent<T>, rhs: Agent<T>) -> Bool {
+        return !(lhs == rhs)
     }
     
     @discardableResult
     func mutation() -> Agent<T> {
-        data = mutate?(data, mutationRate)
+        if !didSolve || didSolve && CGFloat.random(in:0...1) <= 0.08 {
+            data = mutate?(data, mutationRate)
+        }
         return self
+    }
+    
+    private let timeSem = DispatchSemaphore(value: 1)
+    func trackSolveTime(start: Bool) {
+        timeSem.wait()
+        if start {
+            startTime =  Date().timeIntervalSince1970
+            timeSem.signal()
+            return
+        }
+        endTime = Date().timeIntervalSince1970
+        timeSem.signal()
     }
     
     private let sem = DispatchSemaphore(value: 1)

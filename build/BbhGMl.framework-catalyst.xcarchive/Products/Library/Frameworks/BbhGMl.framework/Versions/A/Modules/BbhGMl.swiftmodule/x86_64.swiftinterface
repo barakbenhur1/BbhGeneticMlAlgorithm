@@ -16,7 +16,9 @@ public protocol DNA : Swift.Decodable, Swift.Encodable, Swift.Hashable {
   func mutate(rate: CoreGraphics.CGFloat) -> Self
   func find(target: Self, count: CoreGraphics.CGFloat) -> Swift.Bool
   func elementsEqual(_ other: Self) -> Swift.Bool
+  func equalTo(byEndGoal other: Self) -> Swift.Bool
   static func == (lhs: Self, rhs: Self) -> Swift.Bool
+  static func != (lhs: Self, rhs: Self) -> Swift.Bool
   static func random(length: Swift.Int, extra: Any?) -> Self
   static func += (lhs: inout Self, rhs: Self)
   subscript(offset: Swift.Int) -> Self { get set }
@@ -35,7 +37,7 @@ public class MlPoll<T> where T : BbhGMl.DNA {
   public var fitnessHandler: ((T?) -> (CoreGraphics.CGFloat, CoreGraphics.CGFloat))?
   public var stopHandele: (() -> ())?
   public var delegate: BbhGMl.PollUpdates?
-  public init(num: Swift.Int = 100, lifeSpan: CoreGraphics.CGFloat = 0, moveSpeed: CoreGraphics.CGFloat = 0.5, mutatingRate: CoreGraphics.CGFloat = 0.1)
+  public init(num: Swift.Int = 100, mutatingRate: CoreGraphics.CGFloat = 0.1, lifeSpanBundle bundle: (lifeSpan: CoreGraphics.CGFloat, moveSpeed: CoreGraphics.CGFloat, trackSolveTime: Swift.Bool)? = nil)
   public func saveGeneration(key: Swift.String) -> Swift.Bool
   public func loadGeneration(key: Swift.String) -> Swift.Bool
   public func getAgentsGetters() -> [(Swift.Int) -> (BbhGMl.Agent<T>?)]
@@ -63,6 +65,7 @@ public class MlPoll<T> where T : BbhGMl.DNA {
   public static func empty() -> BbhGMl.Agent<T>
   public func toString() -> Swift.String
   public static func == (lhs: BbhGMl.Agent<T>, rhs: BbhGMl.Agent<T>) -> Swift.Bool
+  public static func != (lhs: BbhGMl.Agent<T>, rhs: BbhGMl.Agent<T>) -> Swift.Bool
   public func getData() -> T?
   public func checkIfShouldKeep()
   @objc deinit
