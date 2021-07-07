@@ -239,6 +239,11 @@ public class MlPoll<T: DNA> {
                 agentsGetters.append { [weak self] (index: Int) -> (Agent<T>?) in
                     guard let strongSelf = self else { return nil }
                     
+                    if index >= strongSelf.agents.count {
+                        let agent = strongSelf.createAgent(mutationRate: strongSelf.mutatingRate)
+                        strongSelf.agents.append(agent)
+                    }
+                    
                     if strongSelf.agents[index].getData()!.equalTo(byEndGoal: target) {
                         if !strongSelf.agentCompleteTask.contains(where: { agent in return agent == strongSelf.agents[index] }) {
                             strongSelf.agents[index].trackSolveTime(start: false)
