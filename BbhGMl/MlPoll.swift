@@ -388,35 +388,38 @@ public class MlPoll<T: DNA> {
     }
     
     private final let fixedGrowth: CGFloat = 10
-//    private lazy var normalizeDimension: CGFloat = (moveSpeed > 0 ? ((lifeSpan / moveSpeed) + 1) : lifeSpan)
-//    private var bestPointOverAll: ((agent: Agent<T>, index: Int))? = nil
+    //    private lazy var normalizeDimension: CGFloat = (moveSpeed > 0 ? ((lifeSpan / moveSpeed) + 1) : lifeSpan)
+    //    private var bestPointOverAll: ((agent: Agent<T>, index: Int))? = nil
     
     private func newGeneration() {
         if lifeSpan > 0 {
-        for i in 0..<agents.count {
-//            print("i: \(i), Fitness: \(agents[i].fitnessVal!), solved: \(agents[i].didSolve)")
-            if agentCompleteTask.contains(where: { (agent) -> Bool in return agents[i] == agent }) {
-                let extraDimension = agents[i].extraDimension
-                //let growth = extraDimension ?? fixedGrowth
-                let normalGroth: CGFloat = 0 //(1 / (10 * growth))
-                let solveTime = trackSolveTime ? (pow(1 - (CGFloat(agents[i].solveTime) / lifeSpan), 2) * 0.4) : 0
-                let newFitnessVal = min(1, (agents[i].fitnessVal! + normalGroth  + solveTime))
-                
-//                print("Score: \(newFitnessVal), Fitness: \(agents[i].fitnessVal!) Growth: \(normalGroth), Time: \(CGFloat(agents[i].solveTime)), Score by time: \(solveTime)")
-    
-                agents[i].fitnessVal! = newFitnessVal
-                
-                agents[i].immutable = extraDimension != nil ? Int(extraDimension!) : nil
+            for i in 0..<agents.count {
+                //            print("i: \(i), Fitness: \(agents[i].fitnessVal!), solved: \(agents[i].didSolve)")
+                if agentCompleteTask.contains(where: { (agent) -> Bool in return agents[i] == agent }) {
+                    let extraDimension = agents[i].extraDimension
+                    //let growth = extraDimension ?? fixedGrowth
+                    let normalGroth: CGFloat = 0 //(1 / (10 * growth))
+                    let solveTime = trackSolveTime ? (pow(1 - (CGFloat(agents[i].solveTime) / lifeSpan), 2) * 0.7) : 0
+                    let newFitnessVal = min(1, (agents[i].fitnessVal! * 0.3 + normalGroth  + solveTime))
+                    
+                    //                print("Score: \(newFitnessVal), Fitness: \(agents[i].fitnessVal!) Growth: \(normalGroth), Time: \(CGFloat(agents[i].solveTime)), Score by time: \(solveTime)")
+                    
+                    agents[i].fitnessVal! = newFitnessVal
+                    
+                    agents[i].immutable = extraDimension != nil ? Int(extraDimension!) : nil
+                }
+                else if !agentCompleteTask.isEmpty {
+                    agents[i].immutable = nil
+                }
+                else if let best = agentWithBestPointForGeneration?.agent, agents[i] == best {
+                    agents[i].immutable = agentWithBestPointForGeneration?.index
+                }
             }
-            else if !agentCompleteTask.isEmpty {
-                agents[i].immutable = nil
-            }
-            else if let best = agentWithBestPointForGeneration?.agent, agents[i] == best {
-                agents[i].immutable = agentWithBestPointForGeneration?.index
-            }
-        }
             
             markBest()
+            
+//            print("Score: \(agentCompleteTask != nil && !agentCompleteTask.isEmpty ? "\(agentCompleteTask!.first!.fitnessVal!)" : "\(best!.fitnessVal!)")")
+//            print("Time: \(agentCompleteTask != nil && !agentCompleteTask.isEmpty ? "\(agentCompleteTask!.first!.solveTime)" : "")")
         }
         
         agentCompleteTask = [Agent<T>]()
